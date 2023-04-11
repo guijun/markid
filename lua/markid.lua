@@ -7,7 +7,7 @@ local namespace = vim.api.nvim_create_namespace("markid")
 -- Global table to store names of created highlight groups
 local hl_group_of_identifier = {}
 local hl_group_count = 0
-
+local hl_index = 0;
 
 local string_to_int = function(str)
     if str == nil then
@@ -43,7 +43,7 @@ M.queries.typescript = M.queries.javascript
 M.additional_vim_regex_highlighting = true
 M.limits = {
   max_col = 400,
-  max_names = 2000, --not used yet
+  max_names = 20000, --not used yet
   max_textlen = 48,
   max_iter = 5000
 }
@@ -99,16 +99,19 @@ function M.init()
                                     -- semi random: Allows to have stable global colors for the same name
                                     local colors_count = 0
                                     if not config.colors then
-                                      while vim.fn.hlexists('markid' .. colors_count + 1) == 1 do
-                                        colors_count = colors_count + 1
-                                      end
+                                        colors_count = 0
                                     else
                                       colors_count = #config.colors
                                     end
                                     if colors_count == 0 then
                                       return
                                     end
-                                    local idx = (string_to_int(text) % colors_count) + 1
+
+                                    hl_index=hl_index+1
+                                    local idx = (hl_index % colors_count) + 1
+                                    -- local idx = (string_to_int(text) % colors_count) + 1
+
+
                                     local group_name = "markid" .. idx
                                     if config.colors then
                                       vim.api.nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
