@@ -134,7 +134,7 @@ function M.init()
                   local idx = hl_index
                   if #group_names == 0 then
                     for i = 1, colors_count, 1 do
-                      group_names[i] = "markid" .. i
+                      group_names[i] = "mkid" .. i
                     end
                   end
                   group_name = group_names[idx]
