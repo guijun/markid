@@ -181,6 +181,9 @@ function M.init()
             if running then
               -- vim.defer_fn(markid_looper, 0)
               vim.schedule(markid_looper)
+              -- print('Execute Running')
+            else
+              -- print('Execute Done')
             end
           end
           markid_looper()
