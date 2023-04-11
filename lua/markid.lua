@@ -77,7 +77,8 @@ function M.init()
         local api_nvim_set_hl = vim.api.nvim_set_hl
         local api_hl_range = vim.highlight.range
 
-
+        local yield_iter = 50
+        local yield_before = 0
 
         local highlight_tree = function(root_tree, cap_start, cap_end)
           vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
@@ -90,8 +91,11 @@ function M.init()
           local api_node_range = nil
 
           for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
-            if true then
+            if yield_before > yield_iter then
               coroutine.yield(true)
+              yield_before = 0
+            else
+              yield_before = yield_before + 1
             end
 
             iter_count = iter_count + 1
@@ -167,7 +171,19 @@ function M.init()
         local co_hl = coroutine.create(function()
           highlight_tree(root, 0, -1)
         end)
-        while coroutine.resume(co_hl)  do
+
+        if false then
+          while coroutine.resume(co_hl) do
+          end
+        else
+          markid_looper = function()
+            local running = coroutine.resume(co_hl)
+            if running then
+              -- vim.defer_fn(markid_looper, 0)
+              vim.schedule(markid_looper)
+            end
+          end
+          markid_looper()
         end
         parser:register_cbs(
           {
