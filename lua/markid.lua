@@ -7,7 +7,7 @@ local namespace = vim.api.nvim_create_namespace("markid")
 -- Global table to store names of created highlight groups
 local hl_group_of_identifier = {}
 local hl_group_count = 0
-
+local hl_index = 0;
 
 local string_to_int = function(str)
     if str == nil then
@@ -43,9 +43,10 @@ M.queries.typescript = M.queries.javascript
 M.additional_vim_regex_highlighting = true
 M.limits = {
   max_col = 400,
-  max_names = 2000, --not used yet
+  max_names = 20000, --not used yet
   max_textlen = 48,
-  max_iter = 5000
+  max_iter = 5000,
+  delay = 100
 }
 function M.init()
     ts.define_modules {
@@ -65,7 +66,7 @@ function M.init()
                 local parser = parsers.get_parser(bufnr, lang)
                 local tree = parser:parse()[1]
                 local root = tree:root()
-
+                local delay = config.limits.delay or 100;
                 local highlight_tree = function(root_tree, cap_start, cap_end)
                     vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
                     local iter_count = 0
@@ -99,16 +100,19 @@ function M.init()
                                     -- semi random: Allows to have stable global colors for the same name
                                     local colors_count = 0
                                     if not config.colors then
-                                      while vim.fn.hlexists('markid' .. colors_count + 1) == 1 do
-                                        colors_count = colors_count + 1
-                                      end
+                                        colors_count = 0
                                     else
                                       colors_count = #config.colors
                                     end
                                     if colors_count == 0 then
                                       return
                                     end
-                                    local idx = (string_to_int(text) % colors_count) + 1
+
+                                    hl_index=hl_index+1
+                                    local idx = (hl_index % colors_count) + 1
+                                    -- local idx = (string_to_int(text) % colors_count) + 1
+
+
                                     local group_name = "markid" .. idx
                                     if config.colors then
                                       vim.api.nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
@@ -134,7 +138,19 @@ function M.init()
                 parser:register_cbs(
                     {
                         on_changedtree = function(changes, tree)
+                          if false then
                             highlight_tree(tree:root(), 0, -1) -- can be made more efficient, but for plain identifier changes, `changes` is empty
+                          else
+                            local oldtimer = vim.api.nvim_buf_get_var(bufnr, "markid_timer")
+                            if oldtimer then
+                              vim.fn.timer_stop(oldtimer)
+                            end
+                            oldtimer = vim.fn.timer_start(bufnr, delay, function()
+                              vim.api.nvim_buf_del_var (bufnr, "markid_timer")
+                              highlight_tree(tree:root(), 0, -1)
+                            end)
+                            vim.api.nvim_buf_set_var(bufnr, "markid_timer", oldtimer)
+                          end
                         end
                     }
                 )
@@ -154,3 +170,21 @@ function M.init()
 end
 
 return M
+
+
+--[[
+    -- 记录定时器，并延迟处理
+       mod._refresh = mod.refresh
+          mod._refresh_timer = nil
+          mod.refresh = function(opts)
+            if mod._refresh_timer then
+              vim.fn.timer_stop(mod._refresh_timer)
+            end
+            mod._refresh_timer = vim.fn.timer_start(1000, function()
+              mod._refresh_timer = nil
+              mod._refresh(opts)
+            end)
+          end
+
+
+]]
