@@ -6,6 +6,8 @@ local namespace = vim.api.nvim_create_namespace("markid")
 
 -- Global table to store names of created highlight groups
 local hl_group_of_identifier = {}
+local hl_group_count = 0
+
 
 local string_to_int = function(str)
     if str == nil then
@@ -21,7 +23,7 @@ end
 
 
 local M = {}
-
+local DEBUG = true
 M.colors = {
     dark = { "#619e9d", "#9E6162", "#81A35C", "#7E5CA3", "#9E9261", "#616D9E", "#97687B", "#689784", "#999C63", "#66639C" },
     bright = {"#f5c0c0", "#f5d3c0", "#f5eac0", "#dff5c0", "#c0f5c8", "#c0f5f1", "#c0dbf5", "#ccc0f5", "#f2c0f5", "#d8e4bc" },
@@ -38,17 +40,22 @@ M.queries = {
         ]]
 }
 M.queries.typescript = M.queries.javascript
-
+M.limits = {
+  max_col = 400,
+  max_names = 2000, --not used yet
+  max_textlen = 48,
+  max_iter = 5000
+}
 function M.init()
     ts.define_modules {
         markid = {
             module_path = "markid",
             attach = function(bufnr, lang)
                 local config = configs.get_module("markid")
-
-                local query = vim.treesitter.get_query(lang, 'markid')
+                vim.bo[bufnr].syntax = "OFF"
+                local query = vim.treesitter.query.get(lang, 'markid')
                 if query == nil or query == '' then
-                  query = vim.treesitter.parse_query(lang, config.queries[lang] or config.queries["default"])
+                  query = vim.treesitter.query.parse(lang, config.queries[lang] or config.queries["default"])
                 end
                 local parser = parsers.get_parser(bufnr, lang)
                 local tree = parser:parse()[1]
@@ -56,11 +63,33 @@ function M.init()
 
                 local highlight_tree = function(root_tree, cap_start, cap_end)
                     vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
+                    local iter_count = 0
+                    local max_iter = config.limits.max_iter
+                    local max_col = config.limits.max_col
+                    local max_textlen = config.limits.max_textlen
+                    local max_names = config.limits.max_names
                     for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
+                        iter_count = iter_count + 1
+                        if iter_count > max_iter then
+                            break
+                        end
+
+                        local start_row, start_col, end_row, end_col = node:range()
+                        if (start_col > max_col) then
+                            break
+                        end
+
                         local name = query.captures[id]
                         if name == "markid" then
-                            local text = vim.treesitter.query.get_node_text(node, bufnr)
+                            local text = vim.treesitter.get_node_text(node, bufnr)
+                            if #text > max_textlen then
+                              text = text:sub(1, max_textlen)
+                            end
                             if text ~= nil then
+                              if hl_group_count > max_names then -- reset count
+                                hl_group_of_identifier = {}
+                                hl_group_count = 0
+                              end
                                 if hl_group_of_identifier[text] == nil then
                                     -- semi random: Allows to have stable global colors for the same name
                                     local colors_count = 0
@@ -80,8 +109,8 @@ function M.init()
                                       vim.api.nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
                                     end
                                     hl_group_of_identifier[text] = group_name
+                                    hl_group_count = hl_group_count + 1
                                 end
-                                local start_row, start_col, end_row, end_col = node:range()
                                 local range_start = {start_row, start_col}
                                 local range_end = {end_row, end_col}
                                 vim.highlight.range(
@@ -110,10 +139,11 @@ function M.init()
             end,
             is_supported = function(lang)
                 local queries = configs.get_module("markid").queries
-                return pcall(vim.treesitter.parse_query, lang, queries[lang] or queries["default"])
+                return pcall(vim.treesitter.query.parse, lang, queries[lang] or queries["default"])
             end,
             colors = M.colors.medium,
-            queries = M.queries
+            queries = M.queries,
+            limits = M.limits
         }
     }
 end
