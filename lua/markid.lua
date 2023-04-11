@@ -9,6 +9,7 @@ local hl_group_of_identifier = {}
 local hl_group_count = 0
 local hl_index = 0;
 local markid_timer = 'markid_timer'
+local group_names = {}
 
 local string_to_int = function(str)
     if str == nil then
@@ -76,7 +77,6 @@ function M.init()
                 local api_nvim_set_hl = vim.api.nvim_set_hl
                 local api_hl_range = vim.highlight.range
 
-                local group_names = {}
 
 
                 local highlight_tree = function(root_tree, cap_start, cap_end)
