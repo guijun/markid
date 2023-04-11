@@ -90,6 +90,10 @@ function M.init()
           local api_node_range = nil
 
           for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
+            if true then
+              coroutine.yield(true)
+            end
+
             iter_count = iter_count + 1
             if iter_count > max_iter then
               break
@@ -110,7 +114,7 @@ function M.init()
                 text = text:sub(1, max_textlen)
               end
               if text ~= nil then
-                if hl_group_count > max_names then               -- reset count
+                if hl_group_count > max_names then -- reset count
                   hl_group_of_identifier = {}
                   hl_group_count = 0
                 end
@@ -160,12 +164,16 @@ function M.init()
           end
         end
 
-        highlight_tree(root, 0, -1)
+        local co_hl = coroutine.create(function()
+          highlight_tree(root, 0, -1)
+        end)
+        while coroutine.resume(co_hl)  do
+        end
         parser:register_cbs(
           {
             on_changedtree = function(changes, tree)
               if false then
-                highlight_tree(tree:root(), 0, -1)             -- can be made more efficient, but for plain identifier changes, `changes` is empty
+                highlight_tree(tree:root(), 0, -1) -- can be made more efficient, but for plain identifier changes, `changes` is empty
               else
                 local oldtimer = vim.api.nvim_buf_get_var(bufnr, markid_timer)
                 if oldtimer then
