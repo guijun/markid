@@ -70,6 +70,15 @@ function M.init()
                 local tree = parser:parse()[1]
                 local root = tree:root()
                 local delay = config.limits.delay or 100;
+
+
+                local api_get_node_text = vim.treesitter.get_node_text
+                local api_nvim_set_hl = vim.api.nvim_set_hl
+                local api_hl_range = vim.highlight.range
+
+                local group_names = {}
+
+
                 local highlight_tree = function(root_tree, cap_start, cap_end)
                     vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
                     local iter_count = 0
@@ -78,13 +87,17 @@ function M.init()
                     local max_textlen = config.limits.max_textlen
                     local max_names = config.limits.max_names
                     local wrap_off =config.limits.wrap_off
+                    local api_node_range = nil
+
                     for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
                         iter_count = iter_count + 1
                         if iter_count > max_iter then
                             break
                         end
-
-                        local start_row, start_col, end_row, end_col = node:range()
+                        if not api_node_range then
+                          api_node_range = node.range
+                        end
+                        local start_row, start_col, end_row, end_col =api_node_range(node)
                         if (start_col > max_col) and wrap_off then
                             vim.wo.wrap = false
                             break
@@ -92,7 +105,7 @@ function M.init()
 
                         local name = query.captures[id]
                         if name == "markid" then
-                            local text = vim.treesitter.get_node_text(node, bufnr)
+                            local text = api_get_node_text(node, bufnr)
                             if #text > max_textlen then
                               text = text:sub(1, max_textlen)
                             end
@@ -101,7 +114,8 @@ function M.init()
                                 hl_group_of_identifier = {}
                                 hl_group_count = 0
                               end
-                                if hl_group_of_identifier[text] == nil then
+                                local group_name = hl_group_of_identifier[text]
+                                if group_name == nil then
                                     -- semi random: Allows to have stable global colors for the same name
                                     local colors_count = 0
                                     if not config.colors then
@@ -114,26 +128,33 @@ function M.init()
                                     end
 
                                     hl_index=hl_index+1
-                                    local idx = (hl_index % colors_count) + 1
-                                    -- local idx = (string_to_int(text) % colors_count) + 1
-
-
-                                    local group_name = "markid" .. idx
+                                    if (hl_index>colors_count) then
+                                      hl_index = 1
+                                    end
+                                    local idx = hl_index
+                                    if #group_names ==0 then
+                                       for i = 1, colors_count, 1 do
+                                        group_names[i] = "markid" .. i
+                                       end
+                                    end
+                                    group_name = group_names[idx]
                                     if config.colors then
-                                      vim.api.nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
+                                      api_nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
                                     end
                                     hl_group_of_identifier[text] = group_name
                                     hl_group_count = hl_group_count + 1
                                 end
-                                local range_start = {start_row, start_col}
-                                local range_end = {end_row, end_col}
-                                vim.highlight.range(
-                                    bufnr,
-                                    namespace,
-                                    hl_group_of_identifier[text],
-                                    range_start,
-                                    range_end
-                                )
+                                if group_name ~= nil then
+                                  local range_start = {start_row, start_col}
+                                  local range_end = {end_row, end_col}
+                                  api_hl_range(
+                                      bufnr,
+                                      namespace,
+                                      group_name,
+                                      range_start,
+                                      range_end
+                                  )
+                                end
                             end
                         end
                     end
