@@ -46,8 +46,10 @@ M.limits = {
   max_names = 20000, --not used yet
   max_textlen = 48,
   max_iter = 5000,
-  delay = 100
+  delay = 100,
+  wrap_off = true
 }
+
 function M.init()
     ts.define_modules {
         markid = {
@@ -74,6 +76,7 @@ function M.init()
                     local max_col = config.limits.max_col
                     local max_textlen = config.limits.max_textlen
                     local max_names = config.limits.max_names
+                    local wrap_off =config.limits.wrap_off
                     for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
                         iter_count = iter_count + 1
                         if iter_count > max_iter then
@@ -81,7 +84,8 @@ function M.init()
                         end
 
                         local start_row, start_col, end_row, end_col = node:range()
-                        if (start_col > max_col) then
+                        if (start_col > max_col) and wrap_off then
+                            vim.wo.wrap = false
                             break
                         end
 
