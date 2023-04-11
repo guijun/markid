@@ -40,6 +40,7 @@ M.queries = {
         ]]
 }
 M.queries.typescript = M.queries.javascript
+M.additional_vim_regex_highlighting = true
 M.limits = {
   max_col = 400,
   max_names = 2000, --not used yet
@@ -52,7 +53,11 @@ function M.init()
             module_path = "markid",
             attach = function(bufnr, lang)
                 local config = configs.get_module("markid")
-                vim.bo[bufnr].syntax = "OFF"
+                if(config.additional_vim_regex_highlighting) then
+                  vim.bo[bufnr].syntax = "ON"
+                  else
+                  vim.bo[bufnr].syntax = "OFF"
+                end
                 local query = vim.treesitter.query.get(lang, 'markid')
                 if query == nil or query == '' then
                   query = vim.treesitter.query.parse(lang, config.queries[lang] or config.queries["default"])
