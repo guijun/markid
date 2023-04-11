@@ -8,7 +8,7 @@ local namespace = vim.api.nvim_create_namespace("markid")
 local hl_group_of_identifier = {}
 local hl_group_count = 0
 local hl_index = 0;
-local markid_timer= 'markid_timer'
+local markid_timer = 'markid_timer'
 
 local string_to_int = function(str)
     if str == nil then
@@ -162,7 +162,11 @@ function M.init()
             end,
             detach = function(bufnr)
                 vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-                vim.api.nvim_buf_del_var (bufnr, markid_timer)
+                local oldtimer = vim.api.nvim_buf_get_var(bufnr, markid_timer)
+                if oldtimer then
+                  vim.fn.timer_stop(oldtimer)
+                  vim.api.nvim_buf_del_var(bufnr, markid_timer)
+                end
             end,
             is_supported = function(lang)
                 local queries = configs.get_module("markid").queries
