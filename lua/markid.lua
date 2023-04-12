@@ -198,77 +198,41 @@ function M.init()
           highlight_tree(root, 0, -1)
         end)
 
+        local markid_looper = function(root)
+          local running = coroutine.resume(co_hl, root)
+          if running then
+            -- vim.defer_fn(markid_looper, 0)
+            local ok, looper = pcall(api_nvim_buf_get_var, bufnr, loopername)
+            if ok and looper then
+              vim.schedule(looper)
+            end
+            -- print('Execute Running')
+          else
+            pcall(api_nvim_buf_del_var, bufnr, loopername)
+            -- print('Execute Done')
+          end
+        end
+
         if false then
           while coroutine.resume(co_hl, root) do
           end
         else
-          local markid_looper = function()
-            local running = coroutine.resume(co_hl, root)
-            if running then
-              -- vim.defer_fn(markid_looper, 0)
-              local looper = api_nvim_buf_get_var(bufnr, loopername)
-              vim.schedule(looper)
-              -- print('Execute Running')
-            else
-              api_nvim_buf_del_var(bufnr, loopername)
-              -- print('Execute Done')
-            end
-          end
           api_nvim_buf_set_var(bufnr, loopername, markid_looper)
-          markid_looper()
+          markid_looper(root)
         end
         parser:register_cbs(
           {
             on_changedtree = function(changes, tree)
-              if false then
-                highlight_tree(tree:root(), 0, -1) -- can be made more efficient, but for plain identifier changes, `changes` is empty
-              else
-                local oldtimer = pcall(vim.api.nvim_buf_get_var, bufnr, markid_timer)
-                if oldtimer then
-                  vim.fn.timer_stop(oldtimer)
-                end
-                oldtimer = vim.fn.timer_start(bufnr, delay, function()
-                  vim.api.nvim_buf_del_var(bufnr, markid_timer)
-
-                  if false then
-                    highlight_tree(tree:root(), 0, -1)
-                  else
-                    --抄袭 的代码
-                    local co_hl = coroutine.create(function(root)
-                      highlight_tree(root, 0, -1)
-                    end)
-
-                    if false then
-                      while coroutine.resume(co_hl, root) do
-                      end
-                    else
-                      local markid_looper = function()
-                        local running = coroutine.resume(co_hl)
-                        if running then
-                          -- vim.defer_fn(markid_looper, 0)
-                          local looper = vim.api.nvim_buf_get_var(bufnr, loopername)
-                          vim.schedule(looper)
-                          -- print('Execute Running')
-                        else
-                          vim.api.nvim_buf_del_var(bufnr, loopername)
-                          -- print('Execute Done')
-                        end
-                      end
-                      vim.api.nvim_buf_set_var(bufnr, loopername, markid_looper)
-                      markid_looper()
-                    end
-                  end
-                end)
-                vim.api.nvim_buf_set_var(bufnr, markid_timer, oldtimer)
-              end
+              markid_looper(tree:root())
+              -- highlight_tree(tree:root(), 0, -1) -- can be made more efficient, but for plain identifier changes, `changes` is empty
             end
           }
         )
       end,
       detach = function(bufnr)
         vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-        local oldtimer = pcall(vim.api.nvim_buf_get_var, bufnr, markid_timer)
-        if oldtimer then
+        local ok, oldtimer = pcall(vim.api.nvim_buf_get_var, bufnr, markid_timer)
+        if ok and oldtimer then
           vim.fn.timer_stop(oldtimer)
           vim.api.nvim_buf_del_var(bufnr, markid_timer)
         end
