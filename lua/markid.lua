@@ -1,5 +1,5 @@
 --[[
--- https://github.com/tree-sitter/tree-sitter-go 
+-- https://github.com/tree-sitter/tree-sitter-go
 -- declarations.txt 内包含了编写query需要的一些符号
 -- :InspectTree指令，就可以看到对应的query了
 --
@@ -67,6 +67,7 @@ M.limits = {
   max_textlen = 48,
   max_iter = 5000,
   delay = 100,
+  override = "highlights",
   wrap_off = true
 }
 
@@ -81,7 +82,9 @@ function M.init()
         else
           vim.bo[bufnr].syntax = "OFF"
         end
-        local query = vim.treesitter.query.get(lang, modulename)
+        local override = config.override or modulename
+        -- local query = vim.treesitter.query.get(lang, modulename)
+        local query = vim.treesitter.query.get(lang, override)
         if query == nil or query == '' then
           query = vim.treesitter.query.parse(lang, config.queries[lang] or config.queries["default"])
         end
@@ -130,7 +133,7 @@ function M.init()
             end
 
             local name = query.captures[id]
-            if name == modulename then
+            if override or name == modulename then
               local text = api_get_node_text(node, bufnr)
               if #text > max_textlen then
                 text = text:sub(1, max_textlen)
