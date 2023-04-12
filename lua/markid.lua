@@ -1,3 +1,9 @@
+--[[
+-- https://github.com/tree-sitter/tree-sitter-go 
+-- declarations.txt 内包含了编写query需要的一些符号
+-- :InspectTree指令，就可以看到对应的query了
+--
+--]]
 local ts = require("nvim-treesitter")
 local parsers = require("nvim-treesitter.parsers")
 local configs = require("nvim-treesitter.configs")
