@@ -2,14 +2,19 @@ local ts = require("nvim-treesitter")
 local parsers = require("nvim-treesitter.parsers")
 local configs = require("nvim-treesitter.configs")
 
-local namespace = vim.api.nvim_create_namespace("markid")
+local modulename = "markid"
+local namespace = vim.api.nvim_create_namespace(modulename)
 
 -- Global table to store names of created highlight groups
 local hl_group_of_identifier = {}
 local hl_group_count = 0
 local hl_index = 0;
 local markid_timer = 'markid_timer'
-local group_names = {}
+local cache_group_names = {}
+local loopername = 'markidlooper'
+
+
+
 
 local string_to_int = function(str)
   if str == nil then
@@ -34,6 +39,12 @@ M.colors = {
 
 M.queries = {
   default = "(identifier) @markid",
+  golang = [[
+          (identifier) @markid
+          (property_identifier) @markid
+          (shorthand_property_identifier_pattern) @markid
+          (shorthand_property_identifier) @markid
+        ]],
   javascript = [[
           (identifier) @markid
           (property_identifier) @markid
@@ -42,9 +53,10 @@ M.queries = {
         ]]
 }
 M.queries.typescript = M.queries.javascript
+-- 正则表达式高亮
 M.additional_vim_regex_highlighting = true
 M.limits = {
-  max_col = 800,
+  max_col = 800,     --超过则不再高亮，主要影响minified js
   max_names = 20000, --not used yet
   max_textlen = 48,
   max_iter = 5000,
@@ -55,15 +67,15 @@ M.limits = {
 function M.init()
   ts.define_modules {
     markid = {
-      module_path = "markid",
+      module_path = modulename,
       attach = function(bufnr, lang)
-        local config = configs.get_module("markid")
+        local config = configs.get_module(modulename)
         if (config.additional_vim_regex_highlighting) then
           vim.bo[bufnr].syntax = "ON"
         else
           vim.bo[bufnr].syntax = "OFF"
         end
-        local query = vim.treesitter.query.get(lang, 'markid')
+        local query = vim.treesitter.query.get(lang, modulename)
         if query == nil or query == '' then
           query = vim.treesitter.query.parse(lang, config.queries[lang] or config.queries["default"])
         end
@@ -112,7 +124,7 @@ function M.init()
             end
 
             local name = query.captures[id]
-            if name == "markid" then
+            if name == modulename then
               local text = api_get_node_text(node, bufnr)
               if #text > max_textlen then
                 text = text:sub(1, max_textlen)
@@ -140,12 +152,12 @@ function M.init()
                     hl_index = 1
                   end
                   local idx = hl_index
-                  if #group_names == 0 then
+                  if #cache_group_names == 0 then
                     for i = 1, colors_count, 1 do
-                      group_names[i] = "mkid" .. i
+                      cache_group_names[i] = "mkid" .. i
                     end
                   end
-                  group_name = group_names[idx]
+                  group_name = cache_group_names[idx]
                   if config.colors then
                     api_nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
                   end
@@ -176,16 +188,19 @@ function M.init()
           while coroutine.resume(co_hl) do
           end
         else
-          markid_looper = function()
+          local markid_looper = function()
             local running = coroutine.resume(co_hl)
             if running then
               -- vim.defer_fn(markid_looper, 0)
-              vim.schedule(markid_looper)
+              local looper = vim.api.nvim_buf_get_var(bufnr, loopername)
+              vim.schedule(looper)
               -- print('Execute Running')
             else
+              vim.api.nvim_buf_del_var(bufnr, loopername)
               -- print('Execute Done')
             end
           end
+          vim.api.nvim_buf_set_var(bufnr, loopername, markid_looper)
           markid_looper()
         end
         parser:register_cbs(
@@ -217,7 +232,7 @@ function M.init()
         end
       end,
       is_supported = function(lang)
-        local queries = configs.get_module("markid").queries
+        local queries = configs.get_module(modulename).queries
         return pcall(vim.treesitter.query.parse, lang, queries[lang] or queries["default"])
       end,
       colors = M.colors.medium,
