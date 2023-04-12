@@ -2,7 +2,7 @@
 -- https://github.com/tree-sitter/tree-sitter-go
 -- declarations.txt 内包含了编写query需要的一些符号
 -- :InspectTree指令，就可以看到对应的query了
---
+-- https://github.com/m-demare/hlargs.nvim 这里应该有一些可以学习的地方
 --]]
 local ts = require("nvim-treesitter")
 local parsers = require("nvim-treesitter.parsers")
@@ -218,7 +218,7 @@ function M.init()
               if false then
                 highlight_tree(tree:root(), 0, -1) -- can be made more efficient, but for plain identifier changes, `changes` is empty
               else
-                local oldtimer = vim.api.nvim_buf_get_var(bufnr, markid_timer)
+                local oldtimer = pcall(vim.api.nvim_buf_get_var,bufnr, markid_timer)
                 if oldtimer then
                   vim.fn.timer_stop(oldtimer)
                 end
