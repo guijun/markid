@@ -67,9 +67,16 @@ M.limits = {
   max_textlen = 48,
   max_iter = 5000,
   delay = 100,
-  override = "highlights",
+  override = modulename, -- markid,highlights
   wrap_off = true
 }
+
+local api_get_node_text = vim.treesitter.get_node_text
+local api_nvim_set_hl = vim.api.nvim_set_hl
+local api_hl_range = vim.highlight.range
+local api_nvim_buf_set_var = vim.api.nvim_buf_set_var
+local api_nvim_buf_get_var = vim.api.nvim_buf_get_var
+local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
 
 function M.init()
   ts.define_modules {
@@ -77,15 +84,16 @@ function M.init()
       module_path = modulename,
       attach = function(bufnr, lang)
         local config = configs.get_module(modulename)
+
         if (config.additional_vim_regex_highlighting) then
           vim.bo[bufnr].syntax = "ON"
         else
           vim.bo[bufnr].syntax = "OFF"
         end
-        local override = config.override or modulename
+        local override = config.override or M.limits.override
         -- local query = vim.treesitter.query.get(lang, modulename)
         local query = vim.treesitter.query.get(lang, override)
-        if query == nil or query == '' then
+        if query == nil or query == '' then -- 如果没有，就从配置里拿出来再编译i下
           query = vim.treesitter.query.parse(lang, config.queries[lang] or config.queries["default"])
         end
         local parser = parsers.get_parser(bufnr, lang)
@@ -93,12 +101,9 @@ function M.init()
         local root = tree:root()
         local delay = config.limits.delay or 100;
 
-
-        local api_get_node_text = vim.treesitter.get_node_text
-        local api_nvim_set_hl = vim.api.nvim_set_hl
-        local api_hl_range = vim.highlight.range
-
+        -- yield 调用间隔
         local yield_iter = 50
+        -- 在调用yield前，已迭代的次数
         local yield_before = 0
 
         local highlight_tree = function(root_tree, cap_start, cap_end)
@@ -120,7 +125,8 @@ function M.init()
             end
 
             iter_count = iter_count + 1
-            if iter_count > max_iter then
+            if max_iter > 0 and iter_count > max_iter then
+              -- 超出最大迭代数量
               break
             end
             if not api_node_range then
@@ -135,17 +141,16 @@ function M.init()
             local name = query.captures[id]
             if override or name == modulename then
               local text = api_get_node_text(node, bufnr)
-              if #text > max_textlen then
+              if max_textlen > 0 and #text > max_textlen then
                 text = text:sub(1, max_textlen)
               end
               if text ~= nil then
-                if hl_group_count > max_names then -- reset count
+                if max_names > 0 and hl_group_count > max_names then -- reset count
                   hl_group_of_identifier = {}
                   hl_group_count = 0
                 end
                 local group_name = hl_group_of_identifier[text]
                 if group_name == nil then
-                  -- semi random: Allows to have stable global colors for the same name
                   local colors_count = 0
                   if not config.colors then
                     colors_count = 0
@@ -167,7 +172,7 @@ function M.init()
                     end
                   end
                   group_name = cache_group_names[idx]
-                  if config.colors then
+                  if colors_count >= idx then
                     api_nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
                   end
                   hl_group_of_identifier[text] = group_name
@@ -194,22 +199,22 @@ function M.init()
         end)
 
         if false then
-          while coroutine.resume(co_hl,root) do
+          while coroutine.resume(co_hl, root) do
           end
         else
           local markid_looper = function()
-            local running = coroutine.resume(co_hl,root)
+            local running = coroutine.resume(co_hl, root)
             if running then
               -- vim.defer_fn(markid_looper, 0)
-              local looper = vim.api.nvim_buf_get_var(bufnr, loopername)
+              local looper = api_nvim_buf_get_var(bufnr, loopername)
               vim.schedule(looper)
               -- print('Execute Running')
             else
-              vim.api.nvim_buf_del_var(bufnr, loopername)
+              api_nvim_buf_del_var(bufnr, loopername)
               -- print('Execute Done')
             end
           end
-          vim.api.nvim_buf_set_var(bufnr, loopername, markid_looper)
+          api_nvim_buf_set_var(bufnr, loopername, markid_looper)
           markid_looper()
         end
         parser:register_cbs(
@@ -234,7 +239,7 @@ function M.init()
                     end)
 
                     if false then
-                      while coroutine.resume(co_hl,root) do
+                      while coroutine.resume(co_hl, root) do
                       end
                     else
                       local markid_looper = function()
