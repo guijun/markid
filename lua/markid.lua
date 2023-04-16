@@ -17,7 +17,7 @@ local hl_group_count = 0
 local hl_index = 0;
 local markid_timer = 'markid_timer'
 local cache_group_names = {}
-local loopername = 'markidlooper'
+local markid_looper_name = 'markidlooper'
 
 
 
@@ -62,10 +62,10 @@ M.queries.typescript = M.queries.javascript
 -- 正则表达式高亮
 M.additional_vim_regex_highlighting = true
 M.limits = {
-  max_col = 800,     --超过则不再高亮，主要影响minified js
-  max_names = -1, --20000, --not used yet
+  max_col = 800,         --超过则不再高亮，主要影响minified js
+  max_names = -1,        --20000, --not used yet
   max_textlen = 48,
-  max_iter = -1, -- 5000,
+  max_iter = -1,         -- 5000,
   delay = 100,
   override = modulename, -- markid,highlights
   wrap_off = true
@@ -78,11 +78,144 @@ local api_nvim_buf_set_var = vim.api.nvim_buf_set_var
 local api_nvim_buf_get_var = vim.api.nvim_buf_get_var
 local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
 
+local yield_iter = 100
+local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_end)
+  local root_tree = tree:root()
+  vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
+  local iter_count = 0
+  local max_iter = config.limits.max_iter
+  local max_col = config.limits.max_col
+  local max_textlen = config.limits.max_textlen
+  local max_names = config.limits.max_names
+  local wrap_off = config.limits.wrap_off
+  local api_node_range = nil
+  local yield_before = 0
+  for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
+    if false then
+      if yield_before > yield_iter then
+        coroutine.yield(true)
+        yield_before = 0
+      else
+        yield_before = yield_before + 1
+      end
+    end
+    if false then
+      iter_count = iter_count + 1
+      if max_iter > 0 and iter_count > max_iter then
+        -- 超出最大迭代数量
+        break
+      end
+    end
+    if not api_node_range then
+      api_node_range = node.range
+    end
+    local start_row, start_col, end_row, end_col = api_node_range(node)
+    if (start_col > max_col) and wrap_off then
+      vim.wo.wrap = false
+      break
+    end
+
+    local name = query.captures[id]
+    if false then
+      print('query.captures[id]', name, vim.inspect(node))
+    end
+    -- if override or name == modulename then
+    if true then
+      local text = api_get_node_text(node, bufnr)
+      if max_textlen > 0 and #text > max_textlen then
+        text = text:sub(1, max_textlen)
+      end
+      if text ~= nil then
+        if max_names > 0 and hl_group_count > max_names then -- reset count
+          hl_group_of_identifier = {}
+          hl_group_count = 0
+        end
+        local group_name = hl_group_of_identifier[text]
+        if group_name == nil then
+          local colors_count = 0
+          if not config.colors then
+            colors_count = 0
+          else
+            colors_count = #config.colors
+          end
+          if colors_count == 0 then
+            return
+          end
+
+          hl_index = hl_index + 1
+          if (hl_index > colors_count) then
+            hl_index = 1
+          end
+          local idx = hl_index
+          if #cache_group_names == 0 then
+            for i = 1, colors_count, 1 do
+              cache_group_names[i] = "mkid" .. i
+            end
+          end
+          group_name = cache_group_names[idx]
+          if colors_count >= idx then
+            api_nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
+          end
+          hl_group_of_identifier[text] = group_name
+          hl_group_count = hl_group_count + 1
+        end
+        if group_name ~= nil then
+          local range_start = { start_row, start_col }
+          local range_end = { end_row, end_col }
+          api_hl_range(
+            bufnr,
+            namespace,
+            group_name,
+            range_start,
+            range_end
+          )
+        end
+      end
+    end
+  end
+  -- print('markid highlight done')
+  return false
+end
+
+MarkId_Runner = nil
+MarkId_Routine = nil
+MarkId_Running = false
+
+MarkId_DelayTimer = nil
+
+local markid_looper_v2 = function(config, query, parser, bufnr,  cap_start, cap_end)
+  if (MarkId_Running) then
+    return;
+  end
+  MarkId_Running = true
+  local tree = parser:parse()[1]
+  -- tree = tree:copy() -- Is it needed ?
+  MarkId_Routine = coroutine.create(function()
+    highlight_tree_v2(config, query, bufnr, tree, cap_start, cap_end)
+  end)
+  MarkId_Runner = function()
+    local co_result = false
+    _, co_result = coroutine.resume(MarkId_Routine);
+    -- print("co.resume", co_result)
+    if (co_result) then
+      vim.schedule(MarkId_Runner)
+    else
+      MarkId_Running = false
+    end
+  end
+  vim.schedule(MarkId_Runner)
+end
+
+
+
+
+
 function M.init()
   ts.define_modules {
     markid = {
       module_path = modulename,
       attach = function(bufnr, lang)
+        -- print('attach', bufnr, lang)      lang = lua
         local config = configs.get_module(modulename)
 
         if (config.additional_vim_regex_highlighting) then
@@ -91,140 +224,66 @@ function M.init()
           vim.bo[bufnr].syntax = "OFF"
         end
         local override = config.override or M.limits.override
-        -- local query = vim.treesitter.query.get(lang, modulename)
-        local query = vim.treesitter.query.get(lang, override)
+
+        -- print('attach', bufnr, lang)
+
+        local _, query = pcall(vim.treesitter.query.get, lang, override)
         if query == nil or query == '' then -- 如果没有，就从配置里拿出来再编译i下
-          query = vim.treesitter.query.parse(lang, config.queries[lang] or config.queries["default"])
+          _, query = pcall(vim.treesitter.query.parse, lang, config.queries[lang] or config.queries["default"])
+          if not query then
+            return
+          end
         end
+
         local parser = parsers.get_parser(bufnr, lang)
-        local tree = parser:parse()[1]
-        local root = tree:root()
+        if parser == nil then
+          return
+        end
         local delay = config.limits.delay or 100;
 
         -- yield 调用间隔
         local yield_iter = 50
         -- 在调用yield前，已迭代的次数
-        local yield_before = 0
 
-        local highlight_tree = function(root_tree, cap_start, cap_end)
-          vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
-          local iter_count = 0
-          local max_iter = config.limits.max_iter
-          local max_col = config.limits.max_col
-          local max_textlen = config.limits.max_textlen
-          local max_names = config.limits.max_names
-          local wrap_off = config.limits.wrap_off
-          local api_node_range = nil
 
-          for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
-            if yield_before > yield_iter then
-              coroutine.yield(true)
-              yield_before = 0
-            else
-              yield_before = yield_before + 1
-            end
-
-            iter_count = iter_count + 1
-            if max_iter > 0 and iter_count > max_iter then
-              -- 超出最大迭代数量
-              break
-            end
-            if not api_node_range then
-              api_node_range = node.range
-            end
-            local start_row, start_col, end_row, end_col = api_node_range(node)
-            if (start_col > max_col) and wrap_off then
-              vim.wo.wrap = false
-              break
-            end
-
-            local name = query.captures[id]
-            if override or name == modulename then
-              local text = api_get_node_text(node, bufnr)
-              if max_textlen > 0 and #text > max_textlen then
-                text = text:sub(1, max_textlen)
-              end
-              if text ~= nil then
-                if max_names > 0 and hl_group_count > max_names then -- reset count
-                  hl_group_of_identifier = {}
-                  hl_group_count = 0
-                end
-                local group_name = hl_group_of_identifier[text]
-                if group_name == nil then
-                  local colors_count = 0
-                  if not config.colors then
-                    colors_count = 0
-                  else
-                    colors_count = #config.colors
-                  end
-                  if colors_count == 0 then
-                    return
-                  end
-
-                  hl_index = hl_index + 1
-                  if (hl_index > colors_count) then
-                    hl_index = 1
-                  end
-                  local idx = hl_index
-                  if #cache_group_names == 0 then
-                    for i = 1, colors_count, 1 do
-                      cache_group_names[i] = "mkid" .. i
-                    end
-                  end
-                  group_name = cache_group_names[idx]
-                  if colors_count >= idx then
-                    api_nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
-                  end
-                  hl_group_of_identifier[text] = group_name
-                  hl_group_count = hl_group_count + 1
-                end
-                if group_name ~= nil then
-                  local range_start = { start_row, start_col }
-                  local range_end = { end_row, end_col }
-                  api_hl_range(
-                    bufnr,
-                    namespace,
-                    group_name,
-                    range_start,
-                    range_end
-                  )
-                end
-              end
-            end
-          end
-        end
-
-        local co_hl = coroutine.create(function(root)
-          highlight_tree(root, 0, -1)
-        end)
-
-        local markid_looper = function(root)
-          local running = coroutine.resume(co_hl, root)
-          if running then
-            -- vim.defer_fn(markid_looper, 0)
-            local ok, looper = pcall(api_nvim_buf_get_var, bufnr, loopername)
-            if ok and looper then
-              vim.schedule(looper)
-            end
-            -- print('Execute Running')
-          else
-            pcall(api_nvim_buf_del_var, bufnr, loopername)
-            -- print('Execute Done')
-          end
-        end
-
-        if false then
-          while coroutine.resume(co_hl, root) do
-          end
-        else
-          api_nvim_buf_set_var(bufnr, loopername, markid_looper)
-          markid_looper(root)
+        if true then
+          markid_looper_v2(config, query, parser, bufnr, 0, -1)
         end
         parser:register_cbs(
           {
-            on_changedtree = function(changes, tree)
-              markid_looper(tree:root())
+            --[[
+            https://github.com/neovim/neovim/blob/faa5d5be4b998427b3378d16ea5ce6ef6f5ddfd0/src/nvim/api/buffer.c
+///             - on_bytes: lua callback invoked on change.
+///               This callback receives more granular information about the
+///               change compared to on_lines.
+///               Return `true` to detach.
+///               Args:
+///               - the string "bytes"
+///               - buffer handle
+///               - b:changedtick
+///               - start row of the changed text (zero-indexed)
+///               - start column of the changed text
+///               - byte offset of the changed text (from the start of
+///                   the buffer)
+///               - old end row of the changed text
+///               - old end column of the changed text
+///               - old end byte length of the changed text
+///               - new end row of the changed text
+///               - new end column of the changed text
+///               - new end byte length of the changed text
+            --]]
+            on_bytes         = function(num_changes, var2, start_row, start_col, bytes_offset, _, _, _, new_end)
+              if true then
+                markid_looper_v2(config, query, parser, bufnr, 0, -1)
+              end
+            end,
+            on_changedtree   = function(changes)
+              -- markid_looper(tree:root())
               -- highlight_tree(tree:root(), 0, -1) -- can be made more efficient, but for plain identifier changes, `changes` is empty
+            end,
+            on_child_added   = function()
+            end,
+            on_child_removed = function()
             end
           }
         )
