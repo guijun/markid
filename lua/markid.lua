@@ -68,7 +68,8 @@ M.limits = {
   max_iter = -1,         -- 5000,
   delay = 100,
   override = modulename, -- markid,highlights
-  wrap_off = true
+  wrap_off = true,
+  routine = false
 }
 
 local api_get_node_text = vim.treesitter.get_node_text
@@ -183,7 +184,7 @@ MarkId_Running = false
 
 MarkId_DelayTimer = nil
 
-local markid_looper_v2 = function(config, query, parser, bufnr,  cap_start, cap_end)
+local markid_looper_v2 = function(config, query, parser, bufnr, cap_start, cap_end)
   if (MarkId_Running) then
     return;
   end
@@ -195,12 +196,21 @@ local markid_looper_v2 = function(config, query, parser, bufnr,  cap_start, cap_
   end)
   MarkId_Runner = function()
     local co_result = false
-    _, co_result = coroutine.resume(MarkId_Routine);
-    -- print("co.resume", co_result)
-    if (co_result) then
-      vim.schedule(MarkId_Runner)
+    if config.limits.routine then
+      while true do
+        _, co_result = coroutine.resume(MarkId_Routine);
+        if (not co_result) then
+          break
+        end
+      end
     else
-      MarkId_Running = false
+      _, co_result = coroutine.resume(MarkId_Routine);
+      -- print("co.resume", co_result)
+      if (co_result) then
+        vim.schedule(MarkId_Runner)
+      else
+        MarkId_Running = false
+      end
     end
   end
   vim.schedule(MarkId_Runner)
