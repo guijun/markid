@@ -153,7 +153,9 @@ MarkId_State = {}
 
 MarkId_Timer = {}
 
-MarkId_StartTimer = function(config,bufnr, aCb)
+MarkId_Tree = {}
+
+MarkId_StartTimer = function(config, bufnr, aCb)
   local old = MarkId_Timer[bufnr]
   if (old) then
     vim.fn.timer_stop(old)
@@ -170,7 +172,9 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
   end
   MarkId_State[bufnr] = RUNING_YES
 
-  local tree = parser:parse()[1]
+  local oldtree = MarkId_Tree[bufnr]
+  local tree = parser:parse(oldtree)[1]
+  MarkId_Tree[bufnr] = tree
   -- tree = tree:copy() -- Is it needed ?
   MarkId_Routine[bufnr] = coroutine.create(function()
     highlight_tree_v2(config, query, bufnr, tree, cap_start, cap_end)
@@ -316,7 +320,7 @@ function M.init()
             --]]
             on_bytes         = function(num_changes, var2, start_row, start_col, bytes_offset, _, _, _, new_end)
               if true then
-                MarkId_StartTimer(config,bufnr, function()
+                MarkId_StartTimer(config, bufnr, function()
                   MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
                 end)
               else
