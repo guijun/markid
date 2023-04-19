@@ -18,6 +18,8 @@ local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
 local DEBUG_QUERY = false
 local DEBUG_VISIBLE = true
 
+local VISIBLE_MIN_HEIGHT = 200
+
 local modulename = "markid"
 local namespace = vim.api.nvim_create_namespace(modulename)
 
@@ -156,10 +158,6 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
     end
   end
   return false
-end
-
-local Fuck = function()
-
 end
 
 
@@ -344,7 +342,6 @@ local evBytesCount = 0
 
 
 MarkIdRefreshVisible = nil
-function M.init()
   vim.api.nvim_create_autocmd({ "WinScrolled", "WinScrolled" }, {
     callback = function()
       if MarkIdRefreshVisible then
@@ -353,6 +350,10 @@ function M.init()
     end
   })
 
+
+
+
+function M.init()
   ts.define_modules {
     markid = {
       module_path = modulename,
@@ -399,20 +400,23 @@ function M.init()
           MarkId_StartTimer(config, bufnr, function()
             local cursor = vim.api.nvim_win_get_cursor(0)
             local height = vim.api.nvim_win_get_height(0)
+            if height < VISIBLE_MIN_HEIGHT then
+              height = VISIBLE_MIN_HEIGHT
+            end
             local cap_start = cursor[1] - height;
             local cap_end = cursor[1] + height;
             if cap_start < 0 then
               cap_start = 0;
             end
             if DEBUG_VISIBLE then
-            print('cap_start', cap_start, 'cap_end', cap_end)
-          end
+              print('cap_start', cap_start, 'cap_end', cap_end)
+            end
             if MarkIdBufStatus_HL_Add(bufnr, cap_start, cap_end) then
               MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
             else
-            if DEBUG_VISIBLE then
-              print("Already highlighted", cap_start, cap_end)
-            end
+              if DEBUG_VISIBLE then
+                print("Already highlighted", cap_start, cap_end)
+              end
             end
           end)
         end
@@ -422,18 +426,7 @@ function M.init()
           if false then
             MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
           else
-            MarkId_StartTimer(config, bufnr, function()
-              local cursor = vim.api.nvim_win_get_cursor(0)
-              local height = vim.api.nvim_win_get_height(0)
-              local cap_start = cursor[1] - height;
-              local cap_end = cursor[1] + height;
-              if cap_start < 0 then
-                cap_start = 0;
-              end
-              print('cap_start', cap_start, 'cap_end', cap_end)
-
-              MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
-            end)
+            MarkIdRefreshVisible()
           end
         end
         parser:register_cbs(
