@@ -161,6 +161,7 @@ MarkId_StartTimer = function(config, bufnr, aCb)
     vim.fn.timer_stop(old)
   end
   MarkId_Timer[bufnr] = vim.fn.timer_start(config.limits.delay, function()
+    vim.fn.timer_stop(MarkId_Timer[bufnr])
     MarkId_Timer[bufnr] = nil
     aCb()
   end)
@@ -173,7 +174,7 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
   MarkId_State[bufnr] = RUNING_YES
 
   local oldtree = MarkId_Tree[bufnr]
-  oldtree = nil
+  -- oldtree = nil
   local tree = parser:parse(oldtree)[1]
   MarkId_Tree[bufnr] = tree
   -- tree = tree:copy() -- Is it needed ?
@@ -254,7 +255,7 @@ M.limits = {
   routine = false
 }
 
-
+local evBytesCount = 0
 
 function M.init()
   ts.define_modules {
@@ -263,6 +264,11 @@ function M.init()
       attach = function(bufnr, lang)
         MarkId_State[bufnr] = RUNING_NO
         MarkId_Tree[bufnr] = nil
+        if (MarkId_Timer[bufnr]) then
+          vim.fn.timer_stop(MarkId_Timer[bufnr])
+          MarkId_Timer[bufnr] = nil
+        end
+
         -- print('attach', bufnr, lang)      lang = lua
         local config = configs.get_module(modulename)
 
@@ -321,12 +327,16 @@ function M.init()
 ///               - new end byte length of the changed text
             --]]
             on_bytes         = function(num_changes, var2, start_row, start_col, bytes_offset, _, _, _, new_end)
-              if true then
-                MarkId_StartTimer(config, bufnr, function()
+              evBytesCount = evBytesCount + num_changes
+              print('evBytesCount', evBytesCount)
+              if false then
+                if true then
+                  MarkId_StartTimer(config, bufnr, function()
+                    MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                  end)
+                else
                   MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
-                end)
-              else
-                MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                end
               end
             end,
             on_changedtree   = function(changes)
@@ -346,6 +356,10 @@ function M.init()
         vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
         MarkId_State[bufnr] = RUNING_QUIT
         MarkId_Tree[bufnr] = nil
+        if (MarkId_Timer[bufnr]) then
+          vim.fn.timer_stop(MarkId_Timer[bufnr])
+          MarkId_Timer[bufnr] = nil
+        end
       end,
       is_supported = function(lang)
         local queries = configs.get_module(modulename).queries
