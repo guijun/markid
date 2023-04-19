@@ -155,6 +155,7 @@ MarkId_Timer = {}
 
 MarkId_Tree = {}
 
+MarkId_BytesEnable = {}
 MarkId_StartTimer = function(config, bufnr, aCb)
   local old = MarkId_Timer[bufnr]
   if (old) then
@@ -197,6 +198,8 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
       end
       MarkId_State[bufnr] = RUNING_NO
       MarkId_Runner[bufnr] = nil
+      MarkId_Routine[bufnr] = nil
+      MarkId_BytesEnable[bufnr] = true
     else
       _, co_result = coroutine.resume(MarkId_Routine[bufnr]);
       -- print("co.resume", co_result)
@@ -207,7 +210,9 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
         end
       else
         MarkId_Runner[bufnr] = nil
+        MarkId_Routine[bufnr] = nil
         MarkId_State[bufnr] = RUNING_NO
+        MarkId_BytesEnable[bufnr] = true
       end
     end
   end
@@ -264,6 +269,9 @@ function M.init()
       attach = function(bufnr, lang)
         MarkId_State[bufnr] = RUNING_NO
         MarkId_Tree[bufnr] = nil
+        MarkId_Runner[bufnr] = nil
+        MarkId_Routine[bufnr] = nil
+        MarkId_BytesEnable[bufnr] = false
         if (MarkId_Timer[bufnr]) then
           vim.fn.timer_stop(MarkId_Timer[bufnr])
           MarkId_Timer[bufnr] = nil
@@ -301,7 +309,13 @@ function M.init()
 
 
         if true then
-          MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+          if false then
+            MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+          else
+            MarkId_StartTimer(config, bufnr, function()
+              MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+            end)
+          end
         end
         parser:register_cbs(
           {
@@ -327,15 +341,15 @@ function M.init()
 ///               - new end byte length of the changed text
             --]]
             on_bytes         = function(num_changes, var2, start_row, start_col, bytes_offset, _, _, _, new_end)
-              evBytesCount = evBytesCount + num_changes
-              print('evBytesCount', evBytesCount)
-              if false then
+              if MarkId_BytesEnable[bufnr] then
                 if true then
-                  MarkId_StartTimer(config, bufnr, function()
+                  if true then
+                    MarkId_StartTimer(config, bufnr, function()
+                      MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                    end)
+                  else
                     MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
-                  end)
-                else
-                  MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                  end
                 end
               end
             end,
