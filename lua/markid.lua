@@ -394,8 +394,11 @@ function M.init()
         MarkId_State[bufnr] = RUNING_QUIT
       end,
       is_supported = function(lang)
-        local queries = configs.get_module(modulename).queries
-        return pcall(vim.treesitter.query.parse, lang, queries[lang] or queries["default"])
+        return true
+        if false then
+          local queries = configs.get_module(modulename).queries
+          return pcall(vim.treesitter.query.parse, lang, queries[lang] or queries["default"])
+        end
       end,
       colors = M.colors.medium,
       queries = M.queries,
