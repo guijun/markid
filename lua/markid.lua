@@ -173,6 +173,7 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
   MarkId_State[bufnr] = RUNING_YES
 
   local oldtree = MarkId_Tree[bufnr]
+  oldtree = nil
   local tree = parser:parse(oldtree)[1]
   MarkId_Tree[bufnr] = tree
   -- tree = tree:copy() -- Is it needed ?
