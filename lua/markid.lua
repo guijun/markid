@@ -96,7 +96,7 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
       end
 
       if DEBUG_QUERY then
-        print('query name', name, text)
+        print('query name', 'max_names', max_names, name, text)
       end
 
       if text ~= nil then
@@ -132,6 +132,13 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
           end
           hl_group_of_identifier[text] = group_name
           hl_group_count = hl_group_count + 1
+          if DEBUG_QUERY then
+            print("hl_group_count", hl_group_count)
+          end
+        end
+
+        if DEBUG_QUERY then
+          print("group_name", group_name, start_row, start_col, end_row, end_col)
         end
         if group_name ~= nil then
           local range_start = { start_row, start_col }
@@ -147,7 +154,6 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
       end
     end
   end
-  -- print('markid highlight done')
   return false
 end
 
@@ -307,7 +313,14 @@ function M.init()
 
         local parser = parsers.get_parser(bufnr, lang)
         if parser == nil then
+          if DEBUG_QUERY then
+            print('get_parser fail.', lang)
+          end
           return
+        else
+          if DEBUG_QUERY then
+            print('get_parser ok.', lang)
+          end
         end
         local delay = config.limits.delay or 100;
 
@@ -346,7 +359,9 @@ function M.init()
             end,
             -- 如果触发了parse操作，则这个函数会被调用
             on_changedtree   = function(changes, tree)
-              -- print("on_changedtree",vim.inspect(changes),vim.inspect(tree  ))
+              if DEBUG_QUERY then
+                print("on_changedtree", vim.inspect(changes), vim.inspect(tree))
+              end
               local cap_start = 0
               local cap_end = -1;
               for i = 1, #changes do
@@ -358,7 +373,7 @@ function M.init()
                   cap_end = change[3];
                 end
               end
-              if true then
+              if false then
                 MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
               else
                 MarkId_StartTimer(config, bufnr, function()
@@ -375,17 +390,8 @@ function M.init()
       end,
       detach = function(bufnr)
         vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-        if true then
-          MarkId_Clear(bufnr)
-          MarkId_State[bufnr] = RUNING_QUIT
-        else
-          MarkId_State[bufnr] = RUNING_QUIT
-          MarkId_Tree[bufnr] = nil
-          if (MarkId_Timer[bufnr]) then
-            vim.fn.timer_stop(MarkId_Timer[bufnr])
-            MarkId_Timer[bufnr] = nil
-          end
-        end
+        MarkId_Clear(bufnr)
+        MarkId_State[bufnr] = RUNING_QUIT
       end,
       is_supported = function(lang)
         local queries = configs.get_module(modulename).queries
