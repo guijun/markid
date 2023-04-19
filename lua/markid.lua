@@ -324,7 +324,9 @@ function M.init()
                 end
               end
             end,
-            on_changedtree   = function(changes)
+            -- 如果触发了parse操作，则这个函数会被调用
+            on_changedtree   = function(changes,tree)
+              -- print("on_changedtree",vim.inspect(changes),vim.inspect(tree  ))
             end,
             on_child_added   = function()
             end,
