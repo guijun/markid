@@ -16,6 +16,7 @@ local api_nvim_buf_get_var = vim.api.nvim_buf_get_var
 local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
 
 local DEBUG_QUERY = false
+local DEBUG_VISIBLE = true
 
 local modulename = "markid"
 local namespace = vim.api.nvim_create_namespace(modulename)
@@ -175,6 +176,58 @@ MarkId_Timer = {}
 
 MarkId_Tree = {}
 
+-- 保存已经高亮的区域
+MarkIdBufStatus = {
+}
+
+MarkIdBufStatus_Affirm = function(bufnr)
+  local r = MarkIdBufStatus[bufnr]
+  if not r then
+    r = {
+      HL = {}
+    }
+    MarkIdBufStatus[bufnr] = r
+  end
+  return r
+end
+
+MarkIdBufStatus_HL_Clear = function(bufnr)
+  local status = MarkIdBufStatus_Affirm(bufnr)
+  status.HL = {}
+end
+
+MarkIdBufStatus_HL_Add = function(bufnr, startRow, endRow)
+  local status = MarkIdBufStatus_Affirm(bufnr)
+  if #status.HL == 0 then
+    table.insert(status.HL, { startRow, endRow })
+    return true
+  else
+    for i = 1, #status.HL, 1 do
+      local range = status.HL[i]
+      if startRow >= range[1] and endRow <= range[2] then
+        print('range[i]', range[1], range[2], startRow, endRow)
+        return false
+      end
+
+      if startRow <= range[1] and endRow >= range[2] then
+        range[1] = startRow
+        range[2] = endRow
+        return true
+      end
+
+      if (startRow >= range[1] and startRow <= range[2]) then
+        range[2] = endRow
+        return true;
+      elseif (endRow >= range[1] and endRow <= range[2]) then
+        range[1] = startRow
+        return true
+      end
+    end
+    table.insert(status.HL, { startRow, endRow })
+    return true
+  end
+end
+
 MarkId_BytesEnable = {}
 MarkId_StartTimer = function(config, bufnr, aCb)
   local old = MarkId_Timer[bufnr]
@@ -289,12 +342,24 @@ M.limits = {
 
 local evBytesCount = 0
 
+
+MarkIdRefreshVisible = nil
 function M.init()
+  vim.api.nvim_create_autocmd({ "WinScrolled", "WinScrolled" }, {
+    callback = function()
+      if MarkIdRefreshVisible then
+        MarkIdRefreshVisible()
+      end
+    end
+  })
+
   ts.define_modules {
     markid = {
       module_path = modulename,
       attach = function(bufnr, lang)
         MarkId_Clear(bufnr)
+
+        MarkIdBufStatus_HL_Clear(bufnr)
         local config = configs.get_module(modulename)
         if (config.additional_vim_regex_highlighting) then
           vim.bo[bufnr].syntax = "ON"
@@ -329,12 +394,45 @@ function M.init()
         -- 在调用yield前，已迭代的次数
 
 
+
+        MarkIdRefreshVisible = function()
+          MarkId_StartTimer(config, bufnr, function()
+            local cursor = vim.api.nvim_win_get_cursor(0)
+            local height = vim.api.nvim_win_get_height(0)
+            local cap_start = cursor[1] - height;
+            local cap_end = cursor[1] + height;
+            if cap_start < 0 then
+              cap_start = 0;
+            end
+            if DEBUG_VISIBLE then
+            print('cap_start', cap_start, 'cap_end', cap_end)
+          end
+            if MarkIdBufStatus_HL_Add(bufnr, cap_start, cap_end) then
+              MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
+            else
+            if DEBUG_VISIBLE then
+              print("Already highlighted", cap_start, cap_end)
+            end
+            end
+          end)
+        end
+
+
         if true then
           if false then
             MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
           else
             MarkId_StartTimer(config, bufnr, function()
-              MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+              local cursor = vim.api.nvim_win_get_cursor(0)
+              local height = vim.api.nvim_win_get_height(0)
+              local cap_start = cursor[1] - height;
+              local cap_end = cursor[1] + height;
+              if cap_start < 0 then
+                cap_start = 0;
+              end
+              print('cap_start', cap_start, 'cap_end', cap_end)
+
+              MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
             end)
           end
         end
@@ -390,6 +488,7 @@ function M.init()
       end,
       detach = function(bufnr)
         vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
+        MarkIdBufStatus_HL_Clear(bufnr)
         MarkId_Clear(bufnr)
         MarkId_State[bufnr] = RUNING_QUIT
       end,
