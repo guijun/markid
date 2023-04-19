@@ -176,7 +176,6 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
   MarkId_State[bufnr] = RUNING_YES
 
   local oldtree = MarkId_Tree[bufnr]
-  -- oldtree = nil
   local tree = parser:parse(oldtree)[1]
   MarkId_Tree[bufnr] = tree
   -- tree = tree:copy() -- Is it needed ?
@@ -203,7 +202,6 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
       MarkId_BytesEnable[bufnr] = true
     else
       _, co_result = coroutine.resume(MarkId_Routine[bufnr]);
-      -- print("co.resume", co_result)
       if (co_result) then
         local runner = MarkId_Runner[bufnr]
         if (runner) then
@@ -220,9 +218,17 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
   vim.schedule(MarkId_Runner[bufnr])
 end
 
-
-
-
+local MarkId_Clear = function(bufnr)
+  MarkId_State[bufnr] = RUNING_NO
+  MarkId_Tree[bufnr] = nil
+  MarkId_Runner[bufnr] = nil
+  MarkId_Routine[bufnr] = nil
+  MarkId_BytesEnable[bufnr] = false
+  if (MarkId_Timer[bufnr]) then
+    vim.fn.timer_stop(MarkId_Timer[bufnr])
+    MarkId_Timer[bufnr] = nil
+  end
+end
 
 local M = {}
 local DEBUG = true
@@ -268,27 +274,14 @@ function M.init()
     markid = {
       module_path = modulename,
       attach = function(bufnr, lang)
-        MarkId_State[bufnr] = RUNING_NO
-        MarkId_Tree[bufnr] = nil
-        MarkId_Runner[bufnr] = nil
-        MarkId_Routine[bufnr] = nil
-        MarkId_BytesEnable[bufnr] = false
-        if (MarkId_Timer[bufnr]) then
-          vim.fn.timer_stop(MarkId_Timer[bufnr])
-          MarkId_Timer[bufnr] = nil
-        end
-
-        -- print('attach', bufnr, lang)      lang = lua
+        MarkId_Clear(bufnr)
         local config = configs.get_module(modulename)
-
         if (config.additional_vim_regex_highlighting) then
           vim.bo[bufnr].syntax = "ON"
         else
           vim.bo[bufnr].syntax = "OFF"
         end
         local override = config.override or M.limits.override
-
-        -- print('attach', bufnr, lang)
 
         local _, query = pcall(vim.treesitter.query.get, lang, override)
         if query == nil or query == '' then -- 如果没有，就从配置里拿出来再编译i下
@@ -320,45 +313,18 @@ function M.init()
         end
         parser:register_cbs(
           {
-            --[[
-            https://github.com/neovim/neovim/blob/faa5d5be4b998427b3378d16ea5ce6ef6f5ddfd0/src/nvim/api/buffer.c
-///             - on_bytes: lua callback invoked on change.
-///               This callback receives more granular information about the
-///               change compared to on_lines.
-///               Return `true` to detach.
-///               Args:
-///               - the string "bytes"
-///               - buffer handle
-///               - b:changedtick
-///               - start row of the changed text (zero-indexed)
-///               - start column of the changed text
-///               - byte offset of the changed text (from the start of
-///                   the buffer)
-///               - old end row of the changed text
-///               - old end column of the changed text
-///               - old end byte length of the changed text
-///               - new end row of the changed text
-///               - new end column of the changed text
-///               - new end byte length of the changed text
-            --]]
             on_bytes         = function(num_changes, var2, start_row, start_col, bytes_offset, _, _, _, new_end)
               if MarkId_BytesEnable[bufnr] then
                 if true then
-                  if true then
-                    MarkId_StartTimer(config, bufnr, function()
-                      MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
-                    end)
-                  else
+                  MarkId_StartTimer(config, bufnr, function()
                     MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
-                  end
+                  end)
+                else
+                  MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
                 end
               end
             end,
             on_changedtree   = function(changes)
-              if false then
-                MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
-              end
-              -- print('on_changedtree', changes)
             end,
             on_child_added   = function()
             end,
@@ -369,11 +335,16 @@ function M.init()
       end,
       detach = function(bufnr)
         vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-        MarkId_State[bufnr] = RUNING_QUIT
-        MarkId_Tree[bufnr] = nil
-        if (MarkId_Timer[bufnr]) then
-          vim.fn.timer_stop(MarkId_Timer[bufnr])
-          MarkId_Timer[bufnr] = nil
+        if true then
+          MarkId_Clear(bufnr)
+          MarkId_State[bufnr] = RUNING_QUIT
+        else
+          MarkId_State[bufnr] = RUNING_QUIT
+          MarkId_Tree[bufnr] = nil
+          if (MarkId_Timer[bufnr]) then
+            vim.fn.timer_stop(MarkId_Timer[bufnr])
+            MarkId_Timer[bufnr] = nil
+          end
         end
       end,
       is_supported = function(lang)
@@ -406,3 +377,24 @@ return M
 
 
 ]]
+--[[
+            https://github.com/neovim/neovim/blob/faa5d5be4b998427b3378d16ea5ce6ef6f5ddfd0/src/nvim/api/buffer.c
+///             - on_bytes: lua callback invoked on change.
+///               This callback receives more granular information about the
+///               change compared to on_lines.
+///               Return `true` to detach.
+///               Args:
+///               - the string "bytes"
+///               - buffer handle
+///               - b:changedtick
+///               - start row of the changed text (zero-indexed)
+///               - start column of the changed text
+///               - byte offset of the changed text (from the start of
+///                   the buffer)
+///               - old end row of the changed text
+///               - old end column of the changed text
+///               - old end byte length of the changed text
+///               - new end row of the changed text
+///               - new end column of the changed text
+///               - new end byte length of the changed text
+            --]]
