@@ -142,6 +142,11 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
   return false
 end
 
+local Fuck = function()
+
+end
+
+
 MarkId_DelayTimer = nil
 
 -- 各buf的协程
@@ -317,16 +322,40 @@ function M.init()
               if MarkId_BytesEnable[bufnr] then
                 if true then
                   MarkId_StartTimer(config, bufnr, function()
-                    MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                    parser:parse()
                   end)
                 else
-                  MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                  if true then
+                    MarkId_StartTimer(config, bufnr, function()
+                      MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                    end)
+                  else
+                    MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                  end
                 end
               end
             end,
             -- 如果触发了parse操作，则这个函数会被调用
-            on_changedtree   = function(changes,tree)
+            on_changedtree   = function(changes, tree)
               -- print("on_changedtree",vim.inspect(changes),vim.inspect(tree  ))
+              local cap_start = 0
+              local cap_end = -1;
+              for i = 1, #changes do
+                local change = changes[i]
+                if (change[1] < cap_start) then
+                  cap_start = change[1]
+                end
+                if (change[3] > cap_end) then
+                  cap_end = change[3];
+                end
+              end
+              if true then
+                MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
+              else
+                MarkId_StartTimer(config, bufnr, function()
+                  MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
+                end)
+              end
             end,
             on_child_added   = function()
             end,
