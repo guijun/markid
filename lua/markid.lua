@@ -56,7 +56,7 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
   local api_node_range = nil
   local yield_before = 0
   for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
-    if false then
+    if true then
       if yield_before > yield_iter then
         coroutine.yield(true)
         yield_before = 0
