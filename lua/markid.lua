@@ -15,7 +15,7 @@ local api_nvim_buf_set_var = vim.api.nvim_buf_set_var
 local api_nvim_buf_get_var = vim.api.nvim_buf_get_var
 local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
 
-
+local DEBUG_QUERY = false
 
 local modulename = "markid"
 local namespace = vim.api.nvim_create_namespace(modulename)
@@ -79,17 +79,26 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
       vim.wo.wrap = false
       break
     end
-
     local name = query.captures[id]
-    if false then
-      print('query.captures[id]', name, vim.inspect(node))
+    local fixedIdx = -1
+    if name == 'keyword' then
+      fixedIdx = 1;
     end
+
     -- if override or name == modulename then
     if true then
-      local text = api_get_node_text(node, bufnr)
+      local text = name
+      if fixedIdx < 0 then
+        text = api_get_node_text(node, bufnr)
+      end
       if max_textlen > 0 and #text > max_textlen then
         text = text:sub(1, max_textlen)
       end
+
+      if DEBUG_QUERY then
+        print('query name', name, text)
+      end
+
       if text ~= nil then
         if max_names > 0 and hl_group_count > max_names then -- reset count
           hl_group_of_identifier = {}
