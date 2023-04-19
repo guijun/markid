@@ -261,6 +261,7 @@ function M.init()
       module_path = modulename,
       attach = function(bufnr, lang)
         MarkId_State[bufnr] = RUNING_NO
+        MarkId_Tree[bufnr] = nil
         -- print('attach', bufnr, lang)      lang = lua
         local config = configs.get_module(modulename)
 
@@ -343,6 +344,7 @@ function M.init()
       detach = function(bufnr)
         vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
         MarkId_State[bufnr] = RUNING_QUIT
+        MarkId_Tree[bufnr] = nil
       end,
       is_supported = function(lang)
         local queries = configs.get_module(modulename).queries
