@@ -8,6 +8,15 @@ local ts = require("nvim-treesitter")
 local parsers = require("nvim-treesitter.parsers")
 local configs = require("nvim-treesitter.configs")
 
+local api_get_node_text = vim.treesitter.get_node_text
+local api_nvim_set_hl = vim.api.nvim_set_hl
+local api_hl_range = vim.highlight.range
+local api_nvim_buf_set_var = vim.api.nvim_buf_set_var
+local api_nvim_buf_get_var = vim.api.nvim_buf_get_var
+local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
+
+
+
 local modulename = "markid"
 local namespace = vim.api.nvim_create_namespace(modulename)
 
@@ -15,11 +24,7 @@ local namespace = vim.api.nvim_create_namespace(modulename)
 local hl_group_of_identifier = {}
 local hl_group_count = 0
 local hl_index = 0;
-local markid_timer = 'markid_timer'
 local cache_group_names = {}
-local markid_looper_name = 'markidlooper'
-
-
 
 
 local string_to_int = function(str)
@@ -34,50 +39,9 @@ local string_to_int = function(str)
   return int
 end
 
-
-local M = {}
-local DEBUG = true
-M.colors = {
-  dark = { "#619e9d", "#9E6162", "#81A35C", "#7E5CA3", "#9E9261", "#616D9E", "#97687B", "#689784", "#999C63", "#66639C" },
-  bright = { "#f5c0c0", "#f5d3c0", "#f5eac0", "#dff5c0", "#c0f5c8", "#c0f5f1", "#c0dbf5", "#ccc0f5", "#f2c0f5", "#d8e4bc" },
-  medium = { "#c99d9d", "#c9a99d", "#c9b79d", "#c9c39d", "#bdc99d", "#a9c99d", "#9dc9b6", "#9dc2c9", "#9da9c9", "#b29dc9" }
-}
-
-M.queries = {
-  default = "(identifier) @markid",
-  golang = [[
-          (identifier) @markid
-          (property_identifier) @markid
-          (shorthand_property_identifier_pattern) @markid
-          (shorthand_property_identifier) @markid
-        ]],
-  javascript = [[
-          (identifier) @markid
-          (property_identifier) @markid
-          (shorthand_property_identifier_pattern) @markid
-          (shorthand_property_identifier) @markid
-        ]]
-}
-M.queries.typescript = M.queries.javascript
--- 正则表达式高亮
-M.additional_vim_regex_highlighting = true
-M.limits = {
-  max_col = 800,         --超过则不再高亮，主要影响minified js
-  max_names = -1,        --20000, --not used yet
-  max_textlen = 48,
-  max_iter = -1,         -- 5000,
-  delay = 100,
-  override = modulename, -- markid,highlights
-  wrap_off = true,
-  routine = false
-}
-
-local api_get_node_text = vim.treesitter.get_node_text
-local api_nvim_set_hl = vim.api.nvim_set_hl
-local api_hl_range = vim.highlight.range
-local api_nvim_buf_set_var = vim.api.nvim_buf_set_var
-local api_nvim_buf_get_var = vim.api.nvim_buf_get_var
-local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
+RUNING_NO = false;
+RUNING_YES = true;
+RUNING_QUIT = 2;
 
 local yield_iter = 100
 local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_end)
@@ -178,45 +142,112 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
   return false
 end
 
-MarkId_Runner = nil
-MarkId_Routine = nil
-MarkId_Running = false
-
 MarkId_DelayTimer = nil
 
-local markid_looper_v2 = function(config, query, parser, bufnr, cap_start, cap_end)
-  if (MarkId_Running) then
-    return;
+-- 各buf的协程
+MarkId_Routine = {}
+-- 各buf的定时执行程序
+MarkId_Runner = {}
+-- 各buf的状态
+MarkId_State = {}
+
+MarkId_Timer = {}
+
+MarkId_StartTimer = function(config,bufnr, aCb)
+  local old = MarkId_Timer[bufnr]
+  if (old) then
+    vim.fn.timer_stop(old)
   end
-  MarkId_Running = true
+  MarkId_Timer[bufnr] = vim.fn.timer_start(config.limits.delay, function()
+    MarkId_Timer[bufnr] = nil
+    aCb()
+  end)
+end
+
+local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end)
+  if not MarkId_State[bufnr] == RUNING_NO then
+    return
+  end
+  MarkId_State[bufnr] = RUNING_YES
+
   local tree = parser:parse()[1]
   -- tree = tree:copy() -- Is it needed ?
-  MarkId_Routine = coroutine.create(function()
+  MarkId_Routine[bufnr] = coroutine.create(function()
     highlight_tree_v2(config, query, bufnr, tree, cap_start, cap_end)
   end)
-  MarkId_Runner = function()
+  MarkId_Runner[bufnr] = function()
     local co_result = false
-    if config.limits.routine then
+    if not config.limits.routine then
       while true do
-        _, co_result = coroutine.resume(MarkId_Routine);
-        if (not co_result) then
+        local Running = MarkId_State[bufnr]
+        if Running == RUNING_YES then
+          _, co_result = coroutine.resume(MarkId_Routine[bufnr]);
+          if (not co_result) then
+            break
+          end
+        else
           break
         end
       end
+      MarkId_State[bufnr] = RUNING_NO
+      MarkId_Runner[bufnr] = nil
     else
-      _, co_result = coroutine.resume(MarkId_Routine);
+      _, co_result = coroutine.resume(MarkId_Routine[bufnr]);
       -- print("co.resume", co_result)
       if (co_result) then
-        vim.schedule(MarkId_Runner)
+        local runner = MarkId_Runner[bufnr]
+        if (runner) then
+          vim.schedule(runner)
+        end
       else
-        MarkId_Running = false
+        MarkId_Runner[bufnr] = nil
+        MarkId_State[bufnr] = RUNING_NO
       end
     end
   end
-  vim.schedule(MarkId_Runner)
+  vim.schedule(MarkId_Runner[bufnr])
 end
 
 
+
+
+
+local M = {}
+local DEBUG = true
+M.colors = {
+  dark = { "#619e9d", "#9E6162", "#81A35C", "#7E5CA3", "#9E9261", "#616D9E", "#97687B", "#689784", "#999C63", "#66639C" },
+  bright = { "#f5c0c0", "#f5d3c0", "#f5eac0", "#dff5c0", "#c0f5c8", "#c0f5f1", "#c0dbf5", "#ccc0f5", "#f2c0f5", "#d8e4bc" },
+  medium = { "#c99d9d", "#c9a99d", "#c9b79d", "#c9c39d", "#bdc99d", "#a9c99d", "#9dc9b6", "#9dc2c9", "#9da9c9", "#b29dc9" }
+}
+
+M.queries = {
+  default = "(identifier) @markid",
+  golang = [[
+          (identifier) @markid
+          (property_identifier) @markid
+          (shorthand_property_identifier_pattern) @markid
+          (shorthand_property_identifier) @markid
+        ]],
+  javascript = [[
+          (identifier) @markid
+          (property_identifier) @markid
+          (shorthand_property_identifier_pattern) @markid
+          (shorthand_property_identifier) @markid
+        ]]
+}
+M.queries.typescript = M.queries.javascript
+-- 正则表达式高亮
+M.additional_vim_regex_highlighting = true
+M.limits = {
+  max_col = 800,         --超过则不再高亮，主要影响minified js
+  max_names = -1,        --20000, --not used yet
+  max_textlen = 48,
+  max_iter = -1,         -- 5000,
+  delay = 100,
+  override = modulename, -- markid,highlights
+  wrap_off = true,
+  routine = false
+}
 
 
 
@@ -225,6 +256,7 @@ function M.init()
     markid = {
       module_path = modulename,
       attach = function(bufnr, lang)
+        MarkId_State[bufnr] = RUNING_NO
         -- print('attach', bufnr, lang)      lang = lua
         local config = configs.get_module(modulename)
 
@@ -257,7 +289,7 @@ function M.init()
 
 
         if true then
-          markid_looper_v2(config, query, parser, bufnr, 0, -1)
+          MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
         end
         parser:register_cbs(
           {
@@ -284,12 +316,18 @@ function M.init()
             --]]
             on_bytes         = function(num_changes, var2, start_row, start_col, bytes_offset, _, _, _, new_end)
               if true then
-                markid_looper_v2(config, query, parser, bufnr, 0, -1)
+                MarkId_StartTimer(config,bufnr, function()
+                  MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+                end)
+              else
+                MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
               end
             end,
             on_changedtree   = function(changes)
-              -- markid_looper(tree:root())
-              -- highlight_tree(tree:root(), 0, -1) -- can be made more efficient, but for plain identifier changes, `changes` is empty
+              if false then
+                MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
+              end
+              -- print('on_changedtree', changes)
             end,
             on_child_added   = function()
             end,
@@ -300,11 +338,7 @@ function M.init()
       end,
       detach = function(bufnr)
         vim.api.nvim_buf_clear_namespace(bufnr, namespace, 0, -1)
-        local ok, oldtimer = pcall(vim.api.nvim_buf_get_var, bufnr, markid_timer)
-        if ok and oldtimer then
-          vim.fn.timer_stop(oldtimer)
-          vim.api.nvim_buf_del_var(bufnr, markid_timer)
-        end
+        MarkId_State[bufnr] = RUNING_QUIT
       end,
       is_supported = function(lang)
         local queries = configs.get_module(modulename).queries
