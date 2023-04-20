@@ -192,12 +192,15 @@ end
 MarkIdBufStatus_HL_Clear = function(bufnr)
   local status = MarkIdBufStatus_Affirm(bufnr)
   status.HL = {}
+  MarkIdRefreshVisible[bufnr] = nil
 end
 
-MarkIdBufStatus_HL_Add = function(bufnr, startRow, endRow)
+MarkIdBufStatus_HL_Add = function(bufnr, startRow, endRow, doAdd)
   local status = MarkIdBufStatus_Affirm(bufnr)
   if #status.HL == 0 then
-    table.insert(status.HL, { startRow, endRow })
+    if (doAdd) then
+      table.insert(status.HL, { startRow, endRow })
+    end
     return true
   else
     for i = 1, #status.HL, 1 do
@@ -210,18 +213,26 @@ MarkIdBufStatus_HL_Add = function(bufnr, startRow, endRow)
       if startRow <= range[1] and endRow >= range[2] then
         range[1] = startRow
         range[2] = endRow
-        return true
+        if (doAdd) then
+          return true
+        end
       end
 
       if (startRow >= range[1] and startRow <= range[2]) then
         range[2] = endRow
-        return true;
+        if (doAdd) then
+          return true;
+        end
       elseif (endRow >= range[1] and endRow <= range[2]) then
         range[1] = startRow
-        return true
+        if (doAdd) then
+          return true
+        end
       end
     end
-    table.insert(status.HL, { startRow, endRow })
+    if (doAdd) then
+      table.insert(status.HL, { startRow, endRow })
+    end
     return true
   end
 end
@@ -247,7 +258,13 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
   MarkId_State[bufnr] = RUNING_YES
 
   local oldtree = MarkId_Tree[bufnr]
-  local tree = parser:parse(oldtree)[1]
+  local ok, tree = pcall(parser.parse, parser, oldtree)
+  if (not ok) then
+    print("parse", vim.inspect(tree))
+    return
+  else
+    tree = tree[1]
+  end
   MarkId_Tree[bufnr] = tree
   -- tree = tree:copy() -- Is it needed ?
   MarkId_Routine[bufnr] = coroutine.create(function()
@@ -271,6 +288,7 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
       MarkId_Runner[bufnr] = nil
       MarkId_Routine[bufnr] = nil
       MarkId_BytesEnable[bufnr] = true
+      MarkIdBufStatus_HL_Add(bufnr, cap_start, cap_end, true)
     else
       _, co_result = coroutine.resume(MarkId_Routine[bufnr]);
       if (co_result) then
@@ -283,6 +301,7 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
         MarkId_Routine[bufnr] = nil
         MarkId_State[bufnr] = RUNING_NO
         MarkId_BytesEnable[bufnr] = true
+        MarkIdBufStatus_HL_Add(bufnr, cap_start, cap_end, true)
       end
     end
   end
@@ -341,14 +360,26 @@ M.limits = {
 local evBytesCount = 0
 
 
-MarkIdRefreshVisible = nil
-  vim.api.nvim_create_autocmd({ "WinScrolled", "WinScrolled" }, {
-    callback = function()
-      if MarkIdRefreshVisible then
-        MarkIdRefreshVisible()
-      end
+MarkIdRefreshVisible = {}
+vim.api.nvim_create_autocmd({ "WinScrolled", "WinScrolled" }, {
+  callback = function()
+    local curbuf = vim.api.nvim_buf_get_number(0)
+    local cb = MarkIdRefreshVisible[curbuf]
+    if cb then
+      cb()
     end
-  })
+  end
+})
+
+vim.api.nvim_create_autocmd({ "WinEnter", "WinEnter" }, {
+  callback = function()
+    local curbuf = vim.api.nvim_buf_get_number(0)
+    local cb = MarkIdRefreshVisible[curbuf]
+    if cb then
+      cb()
+    end
+  end
+})
 
 
 
@@ -361,6 +392,8 @@ function M.init()
         MarkId_Clear(bufnr)
 
         MarkIdBufStatus_HL_Clear(bufnr)
+
+
         local config = configs.get_module(modulename)
         if (config.additional_vim_regex_highlighting) then
           vim.bo[bufnr].syntax = "ON"
@@ -396,7 +429,7 @@ function M.init()
 
 
 
-        MarkIdRefreshVisible = function()
+        MarkIdRefreshVisible[bufnr] = function(force)
           MarkId_StartTimer(config, bufnr, function()
             local cursor = vim.api.nvim_win_get_cursor(0)
             local height = vim.api.nvim_win_get_height(0)
@@ -409,13 +442,13 @@ function M.init()
               cap_start = 0;
             end
             if DEBUG_VISIBLE then
-              print('cap_start', cap_start, 'cap_end', cap_end)
+              print('bufnr', bufnr, 'cap_start', cap_start, 'cap_end', cap_end)
             end
-            if MarkIdBufStatus_HL_Add(bufnr, cap_start, cap_end) then
+            if MarkIdBufStatus_HL_Add(bufnr, cap_start, cap_end) or force then
               MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
             else
               if DEBUG_VISIBLE then
-                print("Already highlighted", cap_start, cap_end)
+                print("Already highlighted", bufnr, cap_start, cap_end)
               end
             end
           end)
@@ -426,7 +459,7 @@ function M.init()
           if false then
             MarkId_AsyncHL(config, query, parser, bufnr, 0, -1)
           else
-            MarkIdRefreshVisible()
+            MarkIdRefreshVisible[bufnr]()
           end
         end
         parser:register_cbs(
