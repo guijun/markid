@@ -27,7 +27,7 @@ local namespace = vim.api.nvim_create_namespace(modulename)
 local hl_group_of_identifier = {}
 local hl_group_count = 0
 local hl_index = 0;
-local cache_group_names = {}
+local hl_group_names = {}
 
 
 local string_to_int = function(str)
@@ -46,10 +46,12 @@ RUNING_NO = false;
 RUNING_YES = true;
 RUNING_QUIT = 2;
 
-local yield_iter = 100
+local yield_iter = 10
 local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_end)
   local root_tree = tree:root()
-  vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
+  if false then
+    vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
+  end
   local iter_count = 0
   local max_iter = config.limits.max_iter
   local max_col = config.limits.max_col
@@ -58,6 +60,16 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
   local wrap_off = config.limits.wrap_off
   local api_node_range = nil
   local yield_before = 0
+
+  local cache_hl_group_of_identifier = nil
+  local cache_hl_index = hl_index
+  local cache_hl_group_count = hl_group_count
+  local cache_hl_group_names = hl_group_names
+  local query_captures = query.captures
+  local text_sub = modulename.sub
+
+  local colors_count = 0
+  local conf_colors = config.colors
   for id, node in query:iter_captures(root_tree, bufnr, cap_start, cap_end) do
     if true then
       if yield_before > yield_iter then
@@ -67,7 +79,7 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
         yield_before = yield_before + 1
       end
     end
-    if false then
+    if false then -- 这里是预防卡死，强制退出
       iter_count = iter_count + 1
       if max_iter > 0 and iter_count > max_iter then
         -- 超出最大迭代数量
@@ -78,11 +90,11 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
       api_node_range = node.range
     end
     local start_row, start_col, end_row, end_col = api_node_range(node)
-    if (start_col > max_col) and wrap_off then
+    if (start_col > max_col) and wrap_off then -- 约束太长的行
       vim.wo.wrap = false
       break
     end
-    local name = query.captures[id]
+    local name = query_captures[id]
     local fixedIdx = -1
     if name == 'keyword' then
       fixedIdx = 1;
@@ -95,7 +107,7 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
         text = api_get_node_text(node, bufnr)
       end
       if max_textlen > 0 and #text > max_textlen then
-        text = text:sub(1, max_textlen)
+        text = text_sub(text, 1, max_textlen)
       end
 
       if DEBUG_QUERY then
@@ -103,40 +115,49 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
       end
 
       if text ~= nil then
-        if max_names > 0 and hl_group_count > max_names then -- reset count
+        if max_names > 0 and cache_hl_group_count > max_names then -- reset count
           hl_group_of_identifier = {}
           hl_group_count = 0
+          cache_hl_group_of_identifier = hl_group_of_identifier
+          cache_hl_group_count = 0
         end
-        local group_name = hl_group_of_identifier[text]
-        if group_name == nil then
-          local colors_count = 0
-          if not config.colors then
-            colors_count = 0
-          else
-            colors_count = #config.colors
-          end
-          if colors_count == 0 then
-            return
-          end
+        if not cache_hl_group_of_identifier then
+          cache_hl_group_of_identifier = hl_group_of_identifier
+        end
 
-          hl_index = hl_index + 1
-          if (hl_index > colors_count) then
-            hl_index = 1
-          end
-          local idx = hl_index
-          if #cache_group_names == 0 then
-            for i = 1, colors_count, 1 do
-              cache_group_names[i] = "mkid" .. i
+        local group_name = cache_hl_group_of_identifier[text]
+        if group_name == nil then
+          if colors_count == 0 then
+            if not conf_colors then
+              colors_count = 0
+            else
+              colors_count = #conf_colors
+            end
+            if colors_count == 0 then
+              break
             end
           end
-          group_name = cache_group_names[idx]
-          if colors_count >= idx then
-            api_nvim_set_hl(0, group_name, { default = true, fg = config.colors[idx] })
+
+          cache_hl_index = cache_hl_index + 1
+          if (cache_hl_index > colors_count) then
+            cache_hl_index = 1
           end
-          hl_group_of_identifier[text] = group_name
-          hl_group_count = hl_group_count + 1
+          local idx = cache_hl_index
+          if (#cache_hl_group_names < idx) then
+            for i = #cache_hl_group_names + 1, idx, 1 do
+              cache_hl_group_names[i] = "mkid" .. i
+            end
+            group_name = cache_hl_group_names[idx]
+            if colors_count >= idx then
+              api_nvim_set_hl(0, group_name, { default = true, fg = conf_colors[idx] })
+            end
+          else
+            group_name = cache_hl_group_names[idx]
+          end
+          cache_hl_group_of_identifier[text] = group_name
+          cache_hl_group_count = cache_hl_group_count + 1
           if DEBUG_QUERY then
-            print("hl_group_count", hl_group_count)
+            print("cache_hl_group_count", cache_hl_group_count)
           end
         end
 
@@ -146,17 +167,22 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
         if group_name ~= nil then
           local range_start = { start_row, start_col }
           local range_end = { end_row, end_col }
-          api_hl_range(
+          local ok, _ = pcall(api_hl_range,
             bufnr,
             namespace,
             group_name,
             range_start,
             range_end
           )
+          if not ok then
+            break
+          end
         end
       end
     end
   end
+  hl_index = cache_hl_index
+  hl_group_count = cache_hl_group_count
   return false
 end
 
@@ -206,7 +232,7 @@ MarkIdBufStatus_HL_Add = function(bufnr, startRow, endRow, doAdd)
     for i = 1, #status.HL, 1 do
       local range = status.HL[i]
       if startRow >= range[1] and endRow <= range[2] then
-        print('range[i]', range[1], range[2], startRow, endRow)
+        print('checking range[', i, ']', range[1], range[2], startRow, endRow)
         return false
       end
 
@@ -361,28 +387,21 @@ local evBytesCount = 0
 
 
 MarkIdRefreshVisible = {}
-vim.api.nvim_create_autocmd({ "WinScrolled", "WinScrolled" }, {
-  callback = function()
-    local curbuf = vim.api.nvim_buf_get_number(0)
-    local cb = MarkIdRefreshVisible[curbuf]
-    if cb then
-      cb()
-    end
+local cb_WinEvents = function()
+  local curbuf = vim.api.nvim_buf_get_number(0)
+  local cb = MarkIdRefreshVisible[curbuf]
+  if cb then
+    cb()
   end
+end
+
+vim.api.nvim_create_autocmd({ "WinScrolled", "WinScrolled" }, {
+  callback = cb_WinEvents
 })
 
 vim.api.nvim_create_autocmd({ "WinEnter", "WinEnter" }, {
-  callback = function()
-    local curbuf = vim.api.nvim_buf_get_number(0)
-    local cb = MarkIdRefreshVisible[curbuf]
-    if cb then
-      cb()
-    end
-  end
+  callback = cb_WinEvents
 })
-
-
-
 
 function M.init()
   ts.define_modules {
