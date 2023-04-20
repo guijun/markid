@@ -16,7 +16,7 @@ local api_nvim_buf_get_var = vim.api.nvim_buf_get_var
 local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
 
 local DEBUG_QUERY = false
-local DEBUG_VISIBLE = true
+local DEBUG_VISIBLE = false
 
 local VISIBLE_MIN_HEIGHT = 200
 
@@ -232,7 +232,9 @@ MarkIdBufStatus_HL_Add = function(bufnr, startRow, endRow, doAdd)
     for i = 1, #status.HL, 1 do
       local range = status.HL[i]
       if startRow >= range[1] and endRow <= range[2] then
-        print('checking range[', i, ']', range[1], range[2], startRow, endRow)
+        if DEBUG_VISIBLE then
+          print('checking range[', i, ']', range[1], range[2], startRow, endRow)
+        end
         return false
       end
 
@@ -286,7 +288,9 @@ local MarkId_AsyncHL = function(config, query, parser, bufnr, cap_start, cap_end
   local oldtree = MarkId_Tree[bufnr]
   local ok, tree = pcall(parser.parse, parser, oldtree)
   if (not ok) then
-    print("parse", vim.inspect(tree))
+    if DEBUG_VISIBLE then
+      print("parse", vim.inspect(tree))
+    end
     return
   else
     tree = tree[1]
