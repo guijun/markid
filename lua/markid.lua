@@ -579,6 +579,7 @@ function M.init()
                   cap_end = cursor[1] + height
                 end
               end
+              cap_end= cap_end+1
               if false then
                 MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
               else
