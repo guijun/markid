@@ -552,7 +552,7 @@ function M.init()
               if DEBUG_QUERY then
                 print("on_changedtree", vim.inspect(changes), vim.inspect(tree))
               end
-              local cap_start = 0
+              local cap_start = 999999999
               local cap_end = -1;
               for i = 1, #changes do
                 local change = changes[i]
@@ -563,14 +563,21 @@ function M.init()
                   cap_end = change[3];
                 end
               end
-              cap_end = cap_start + VISIBLE_MIN_HEIGHT
-              local cursor = vim.api.nvim_win_get_cursor(0)
-              local height = vim.api.nvim_win_get_height(0)
-              if cap_start < cursor then
-                cap_start = cursor
+              if (false) then
+                local cap_end_max = cap_start + VISIBLE_MIN_HEIGHT
+                if (cap_end > cap_end_max) then
+                  cap_end = cap_end_max
+                end
               end
-              if (cap_end > cursor + height) then
-                cap_end = cursor + height
+              if (false) then
+                local cursor = vim.api.nvim_win_get_cursor(0)
+                local height = vim.api.nvim_win_get_height(0)
+                if cap_start < cursor[1] then
+                  cap_start = cursor[1]
+                end
+                if (cap_end > cursor[1] + height) then
+                  cap_end = cursor[1] + height
+                end
               end
               if false then
                 MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
