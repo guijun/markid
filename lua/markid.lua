@@ -563,6 +563,7 @@ function M.init()
                   cap_end = change[3];
                 end
               end
+              cap_end = cap_start + VISIBLE_MIN_HEIGHT
               if false then
                 MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
               else
