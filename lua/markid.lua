@@ -15,7 +15,7 @@ local api_nvim_buf_set_var = vim.api.nvim_buf_set_var
 local api_nvim_buf_get_var = vim.api.nvim_buf_get_var
 local api_nvim_buf_del_var = vim.api.nvim_buf_del_var
 
-local DEBUG_QUERY = false
+local DEBUG_QUERY = true
 local DEBUG_VISIBLE = false
 
 local VISIBLE_MIN_HEIGHT = 200
@@ -431,6 +431,8 @@ M.limits = {
     ['keyword'] = true,
     ['keyword.function'] = true,
     ['keyword.operator'] = true,
+    ['conditional'] = true,
+    ['include'] = true,
     ['spell'] = true,
     ['comment'] = true
   }
