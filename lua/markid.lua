@@ -100,6 +100,7 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
   local max_textlen = config.limits.max_textlen
   local max_names = config.limits.max_names
   local wrap_off = config.limits.wrap_off
+  local use_name = config.limits.use_name
   local api_node_range = nil
   local yield_before = 0
 
@@ -137,23 +138,22 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
       break
     end
     local name = query_captures[id]
-    local fixedIdx = -1
-    if name == 'keyword' then
-      fixedIdx = 1;
-    end
-
+    local asName = use_name[name]
     -- if override or name == modulename then
     if true then
       local text = name
-      if fixedIdx < 0 then
+      if not asName then
         text = api_get_node_text(node, bufnr)
+        if max_textlen > 0 and #text > max_textlen then
+          text = text_sub(text, 1, max_textlen)
+        end
+      else
+        if DEBUG_QUERY then
+          print('----------------------------------------- asName', name, asName)
+        end
       end
-      if max_textlen > 0 and #text > max_textlen then
-        text = text_sub(text, 1, max_textlen)
-      end
-
       if DEBUG_QUERY then
-        print('query name', 'max_names', max_names, name, text)
+        print('query name', asName, 'max_names', max_names, name, text)
       end
 
       if text ~= nil then
@@ -426,7 +426,14 @@ M.limits = {
   delay = 100,
   override = modulename, -- markid,highlights
   wrap_off = true,
-  routine = false
+  routine = false,
+  use_name = {
+    ['keyword'] = true,
+    ['keyword.function'] = true,
+    ['keyword.operator'] = true,
+    ['spell'] = true,
+    ['comment'] = true
+  }
 }
 
 local evBytesCount = 0
@@ -579,7 +586,7 @@ function M.init()
                   cap_end = cursor[1] + height
                 end
               end
-              cap_end= cap_end+1
+              cap_end = cap_end + 1
               if false then
                 MarkId_AsyncHL(config, query, parser, bufnr, cap_start, cap_end)
               else
