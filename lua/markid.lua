@@ -95,12 +95,13 @@ local highlight_tree_v2 = function(config, query, bufnr, tree, cap_start, cap_en
     vim.api.nvim_buf_clear_namespace(bufnr, namespace, cap_start, cap_end)
   end
   local iter_count = 0
-  local max_iter = config.limits.max_iter
-  local max_col = config.limits.max_col
-  local max_textlen = config.limits.max_textlen
-  local max_names = config.limits.max_names
-  local wrap_off = config.limits.wrap_off
-  local use_name = config.limits.use_name
+  local limits = config.limits
+  local max_iter = limits.max_iter
+  local max_col = limits.max_col
+  local max_textlen = limits.max_textlen
+  local max_names = limits.max_names
+  local wrap_off = limits.wrap_off
+  local use_name = limits.use_name
   local api_node_range = nil
   local yield_before = 0
 
@@ -433,7 +434,7 @@ M.limits = {
     ['keyword.operator'] = true,
     ['conditional'] = true,
     ['include'] = true,
-    ['spell'] = true,
+    -- ['spell'] = true,
     ['comment'] = true
   }
 }
