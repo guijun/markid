@@ -19,7 +19,7 @@ local DEBUG_QUERY = false
 local DEBUG_VISIBLE = false
 
 local VISIBLE_MIN_HEIGHT = 200
-local ENABLE_TSPrebuild = false
+local ENABLE_TSPrebuild = true
 
 
 local modulename = "markid"
