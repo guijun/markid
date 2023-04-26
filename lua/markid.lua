@@ -19,6 +19,8 @@ local DEBUG_QUERY = false
 local DEBUG_VISIBLE = false
 
 local VISIBLE_MIN_HEIGHT = 200
+local ENABLE_TSPrebuild = false
+
 
 local modulename = "markid"
 local namespace = vim.api.nvim_create_namespace(modulename)
@@ -464,7 +466,9 @@ function M.init()
     markid = {
       module_path = modulename,
       attach = function(bufnr, lang)
-        TSPrebuild.on_attach(bufnr, lang)
+        if ENABLE_TSPrebuild then
+          TSPrebuild.on_attach(bufnr, lang)
+        end
         MarkId_Clear(bufnr)
 
         MarkIdBufStatus_HL_Clear(bufnr)
